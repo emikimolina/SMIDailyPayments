@@ -40,36 +40,38 @@ function Card({ title, value, sub, trend, isPointChange, invert }) {
   );
 }
 
-export default function KPICards({ kpis, trends, rowCount }) {
+export default function KPICards({ kpis, trends, weekLabel }) {
   const { totalCollected, insurancePct, patientPct, refundRate, avgDaysToPost } = kpis;
   const t = trends || {};
+  const weekSub = weekLabel ? `Week of ${weekLabel}` : 'Last complete week';
+  const wowSub  = weekLabel ? `vs prior week` : null;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
       <Card
         title="Net Collected"
         value={fmt(totalCollected, 'currency')}
-        sub={`${rowCount.toLocaleString()} records`}
+        sub={weekSub}
         trend={t.totalCollected}
       />
       <Card
         title="Insurance Mix"
         value={`${insurancePct.toFixed(1)}%`}
-        sub="of total payments"
+        sub={wowSub}
         trend={t.insurancePct}
         isPointChange
       />
       <Card
         title="Patient Mix"
         value={`${patientPct.toFixed(1)}%`}
-        sub="of total payments"
+        sub={wowSub}
         trend={t.patientPct}
         isPointChange
       />
       <Card
         title="Refund Rate"
         value={`${refundRate.toFixed(2)}%`}
-        sub="refunds / total"
+        sub={wowSub}
         trend={t.refundRate}
         isPointChange
         invert
@@ -77,7 +79,7 @@ export default function KPICards({ kpis, trends, rowCount }) {
       <Card
         title="Avg Days to Post"
         value={avgDaysToPost ? `${avgDaysToPost.toFixed(1)}d` : '—'}
-        sub="posted − month end"
+        sub={wowSub}
         trend={t.avgDaysToPost}
         invert
       />

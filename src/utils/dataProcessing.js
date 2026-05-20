@@ -393,7 +393,19 @@ export function computeWeeklyTrend(rows) {
   return { chartData, groupings };
 }
 
-// WoW trend summary: last complete week vs prior week, nested InsCoName → InsurancePlanName
+// Returns rows for the most recent complete week and its label
+export function getLastCompleteWeek(rows) {
+  const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
+  if (!allWeeks.length) return { rows: [], weekLabel: null };
+  const lastWeek = allWeeks[allWeeks.length - 1];
+  const [y, m, d] = lastWeek.split('-');
+  return {
+    rows: rows.filter(r => r.weekEnding === lastWeek),
+    weekLabel: `${m}/${d}/${y.slice(2)}`,
+  };
+}
+
+
 export function computeTrendSummary(rows) {
   const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
   if (allWeeks.length < 2) return { currentWeek: null, priorWeek: null, data: [] };

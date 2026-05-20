@@ -19,6 +19,7 @@ import {
   computeWeeklyTrend,
   computeTrendSummary,
   computeStateComparison,
+  getLastCompleteWeek,
 } from './utils/dataProcessing.js';
 
 const DEFAULT_FILTERS = {
@@ -89,7 +90,8 @@ export default function App() {
 
   const filterOptions  = useMemo(() => rows ? getFilterOptions(rows) : null, [rows]);
   const filtered       = useMemo(() => rows ? applyFilters(rows, filters) : [], [rows, filters]);
-  const kpis           = useMemo(() => computeKPIs(filtered), [filtered]);
+  const lastWeek       = useMemo(() => getLastCompleteWeek(filtered), [filtered]);
+  const kpis           = useMemo(() => computeKPIs(lastWeek.rows), [lastWeek]);
   const kpiTrends      = useMemo(() => computeKPITrends(filtered), [filtered]);
   const scorecard      = useMemo(() => computePayerScorecard(filtered), [filtered]);
   const weeklyTrend    = useMemo(() => computeWeeklyTrend(filtered), [filtered]);
@@ -181,7 +183,7 @@ export default function App() {
           <>
             <Filters options={filterOptions} filters={filters} onChange={setFilters} />
 
-            <KPICards kpis={kpis} trends={kpiTrends} rowCount={filtered.length} />
+            <KPICards kpis={kpis} trends={kpiTrends} weekLabel={lastWeek.weekLabel} />
 
             <WeeklyTrendChart data={weeklyTrend.chartData} groupings={weeklyTrend.groupings} />
 
