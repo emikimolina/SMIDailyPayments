@@ -309,30 +309,49 @@ export function computePayerScorecard(rows) {
     if (!groups[key]) {
       groups[key] = {
         insuranceGrouping: key,
-        insurancePayment: 0,
-        patientPayment: 0,
-        refunds: 0,
-        totalPayment: 0,
-        netCollected: 0,
-        daysSum: 0,
-        daysCount: 0,
-        claimCount: 0,
+        insurancePayment: 0, patientPayment: 0, refunds: 0,
+        totalPayment: 0, netCollected: 0,
+        daysSum: 0, daysCount: 0, claimCount: 0,
+        plans: {},
       };
     }
     const g = groups[key];
     g.insurancePayment += row.insurancePayment;
-    g.patientPayment += row.patientPayment;
-    g.refunds += row.refunds;
-    g.totalPayment += row.totalPaymentAmount;
-    g.netCollected += row.netCollected;
+    g.patientPayment   += row.patientPayment;
+    g.refunds          += row.refunds;
+    g.totalPayment     += row.totalPaymentAmount;
+    g.netCollected     += row.netCollected;
     if (row.daysToPost !== null) { g.daysSum += row.daysToPost; g.daysCount++; }
     g.claimCount++;
+
+    const planKey = row.insurancePlanName || '(No Plan)';
+    if (!g.plans[planKey]) {
+      g.plans[planKey] = {
+        insurancePlanName: planKey,
+        insurancePayment: 0, patientPayment: 0, refunds: 0,
+        totalPayment: 0, netCollected: 0,
+        daysSum: 0, daysCount: 0, claimCount: 0,
+      };
+    }
+    const p = g.plans[planKey];
+    p.insurancePayment += row.insurancePayment;
+    p.patientPayment   += row.patientPayment;
+    p.refunds          += row.refunds;
+    p.totalPayment     += row.totalPaymentAmount;
+    p.netCollected     += row.netCollected;
+    if (row.daysToPost !== null) { p.daysSum += row.daysToPost; p.daysCount++; }
+    p.claimCount++;
   }
 
   return Object.values(groups).map(g => ({
     ...g,
-    refundRate: g.totalPayment !== 0 ? (g.refunds / g.totalPayment) * 100 : 0,
+    refundRate:    g.totalPayment !== 0 ? (g.refunds / g.totalPayment) * 100 : 0,
     avgDaysToPost: g.daysCount > 0 ? g.daysSum / g.daysCount : null,
+    plans: Object.values(g.plans).map(p => ({
+      ...p,
+      refundRate:    p.totalPayment !== 0 ? (p.refunds / p.totalPayment) * 100 : 0,
+      avgDaysToPost: p.daysCount > 0 ? p.daysSum / p.daysCount : null,
+    })).sort((a, b) => b.netCollected - a.netCollected),
   }));
 }
 
@@ -406,66 +425,92 @@ export function getLastCompleteWeek(rows) {
 }
 
 
+function emptyPeriod() { return { ins: 0, pat: 0, ref: 0, net: 0, daysSum: 0, daysCount: 0 }; }
+function addToPeriod(p, row) {
+  p.ins += row.insurancePayment;
+  p.pat += row.patientPayment;
+  p.ref += row.refunds;
+  p.net += row.netCollected;
+  if (row.daysToPost !== null) { p.daysSum += row.daysToPost; p.daysCount++; }
+}
+function finalizePeriod(p) {
+  return { ...p, avgDays: p.daysCount > 0 ? p.daysSum / p.daysCount : null };
+}
+function pctChg(cur, pri) { return pri !== 0 ? ((cur - pri) / Math.abs(pri)) * 100 : null; }
+function direction(v) { return v === null ? 'flat' : v > 1 ? 'up' : v < -1 ? 'down' : 'flat'; }
+
+// WoW Payer Trends: InsCoName → InsurancePlanName, with days to post
 export function computeTrendSummary(rows) {
   const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
   if (allWeeks.length < 2) return { currentWeek: null, priorWeek: null, data: [] };
 
   const currentWeek = allWeeks[allWeeks.length - 1];
   const priorWeek   = allWeeks[allWeeks.length - 2];
-
   const coGroups = {};
 
   for (const row of rows) {
     if (row.weekEnding !== currentWeek && row.weekEnding !== priorWeek) continue;
     const co   = row.insuranceGrouping || 'Unknown';
     const plan = row.insurancePlanName || '(No Plan)';
-    const isCurrent = row.weekEnding === currentWeek;
+    const cur  = row.weekEnding === currentWeek;
 
-    if (!coGroups[co]) {
-      coGroups[co] = {
-        insCoName: co,
-        current: { ins: 0, pat: 0, ref: 0, net: 0 },
-        prior:   { ins: 0, pat: 0, ref: 0, net: 0 },
-        plans: {},
-      };
-    }
-    const g = coGroups[co];
-    const period = isCurrent ? g.current : g.prior;
-    period.ins += row.insurancePayment;
-    period.pat += row.patientPayment;
-    period.ref += row.refunds;
-    period.net += row.netCollected;
+    if (!coGroups[co]) coGroups[co] = { insCoName: co, current: emptyPeriod(), prior: emptyPeriod(), plans: {} };
+    addToPeriod(cur ? coGroups[co].current : coGroups[co].prior, row);
 
-    if (!g.plans[plan]) {
-      g.plans[plan] = {
-        planName: plan,
-        current: { ins: 0, pat: 0, ref: 0, net: 0 },
-        prior:   { ins: 0, pat: 0, ref: 0, net: 0 },
-      };
-    }
-    const pp = isCurrent ? g.plans[plan].current : g.plans[plan].prior;
-    pp.ins += row.insurancePayment;
-    pp.pat += row.patientPayment;
-    pp.ref += row.refunds;
-    pp.net += row.netCollected;
+    if (!coGroups[co].plans[plan]) coGroups[co].plans[plan] = { planName: plan, current: emptyPeriod(), prior: emptyPeriod() };
+    addToPeriod(cur ? coGroups[co].plans[plan].current : coGroups[co].plans[plan].prior, row);
   }
 
-  const pctChg = (cur, pri) => pri !== 0 ? ((cur - pri) / Math.abs(pri)) * 100 : null;
-
   const data = Object.values(coGroups).map(g => {
-    const netPct = pctChg(g.current.net, g.prior.net);
+    const c = finalizePeriod(g.current), p = finalizePeriod(g.prior);
+    const v = pctChg(c.net, p.net);
     return {
-      insCoName: g.insCoName,
-      current:   g.current,
-      prior:     g.prior,
-      netPctChange: netPct,
-      direction: netPct === null ? 'flat' : netPct > 1 ? 'up' : netPct < -1 ? 'down' : 'flat',
-      total: g.current.net + g.prior.net,
-      plans: Object.values(g.plans).map(p => ({
-        ...p,
-        netPctChange: pctChg(p.current.net, p.prior.net),
-        direction: (() => { const v = pctChg(p.current.net, p.prior.net); return v === null ? 'flat' : v > 1 ? 'up' : v < -1 ? 'down' : 'flat'; })(),
-      })).sort((a, b) => (b.current.net + b.prior.net) - (a.current.net + a.prior.net)),
+      insCoName: g.insCoName, current: c, prior: p,
+      netPctChange: v, direction: direction(v), total: c.net + p.net,
+      plans: Object.values(g.plans).map(pl => {
+        const pc = finalizePeriod(pl.current), pp = finalizePeriod(pl.prior);
+        const pv = pctChg(pc.net, pp.net);
+        return { planName: pl.planName, current: pc, prior: pp, netPctChange: pv, direction: direction(pv) };
+      }).sort((a, b) => (b.current.net + b.prior.net) - (a.current.net + a.prior.net)),
+    };
+  }).sort((a, b) => b.total - a.total);
+
+  return { currentWeek, priorWeek, data };
+}
+
+// WoW Modality Trends: cptModality → cptCode, with days to post
+export function computeModalityTrendSummary(rows) {
+  const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
+  if (allWeeks.length < 2) return { currentWeek: null, priorWeek: null, data: [] };
+
+  const currentWeek = allWeeks[allWeeks.length - 1];
+  const priorWeek   = allWeeks[allWeeks.length - 2];
+  const groups = {};
+
+  for (const row of rows) {
+    if (row.weekEnding !== currentWeek && row.weekEnding !== priorWeek) continue;
+    const mod = row.cptModality || 'Unknown';
+    const cpt = row.cptCode     || '(No CPT)';
+    const cur = row.weekEnding === currentWeek;
+
+    if (!groups[mod]) groups[mod] = { name: mod, current: emptyPeriod(), prior: emptyPeriod(), children: {} };
+    addToPeriod(cur ? groups[mod].current : groups[mod].prior, row);
+
+    if (!groups[mod].children[cpt]) groups[mod].children[cpt] = { name: cpt, current: emptyPeriod(), prior: emptyPeriod() };
+    addToPeriod(cur ? groups[mod].children[cpt].current : groups[mod].children[cpt].prior, row);
+  }
+
+  const data = Object.values(groups).map(g => {
+    const c = finalizePeriod(g.current), p = finalizePeriod(g.prior);
+    const v = pctChg(c.net, p.net);
+    return {
+      name: g.name, current: c, prior: p,
+      netPctChange: v, direction: direction(v), total: c.net + p.net,
+      children: Object.values(g.children).map(ch => {
+        const cc = finalizePeriod(ch.current), cp = finalizePeriod(ch.prior);
+        const cv = pctChg(cc.net, cp.net);
+        return { name: ch.name, current: cc, prior: cp, netPctChange: cv, direction: direction(cv) };
+      }).sort((a, b) => (b.current.net + b.prior.net) - (a.current.net + a.prior.net)),
     };
   }).sort((a, b) => b.total - a.total);
 

@@ -4,8 +4,8 @@ import Filters from './components/Filters.jsx';
 import KPICards from './components/KPICards.jsx';
 import PayerScorecard from './components/PayerScorecard.jsx';
 import WeeklyTrendChart from './components/WeeklyTrendChart.jsx';
-import StateComparisonChart from './components/StateComparisonChart.jsx';
 import TrendSummary from './components/TrendSummary.jsx';
+import ModalityTrendSummary from './components/ModalityTrendSummary.jsx';
 import ColumnMapper from './components/ColumnMapper.jsx';
 import {
   extractHeaders,
@@ -18,7 +18,7 @@ import {
   computePayerScorecard,
   computeWeeklyTrend,
   computeTrendSummary,
-  computeStateComparison,
+  computeModalityTrendSummary,
   getLastCompleteWeek,
 } from './utils/dataProcessing.js';
 
@@ -96,7 +96,7 @@ export default function App() {
   const scorecard      = useMemo(() => computePayerScorecard(filtered), [filtered]);
   const weeklyTrend    = useMemo(() => computeWeeklyTrend(filtered), [filtered]);
   const trendSummary   = useMemo(() => computeTrendSummary(filtered), [filtered]);
-  const stateData      = useMemo(() => computeStateComparison(filtered), [filtered]);
+  const modalityTrend  = useMemo(() => computeModalityTrendSummary(filtered), [filtered]);
 
   return (
     <div className="min-h-screen bg-[#F6F9FC]">
@@ -189,15 +189,14 @@ export default function App() {
 
             <TrendSummary data={trendSummary} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StateComparisonChart data={stateData} />
-              <PayerScorecard data={scorecard} />
-            </div>
+            <ModalityTrendSummary data={modalityTrend} />
+
+            <PayerScorecard data={scorecard} />
 
             <p className="text-xs text-[#697386] text-center pb-4">
               {filtered.length.toLocaleString()} of {rows.length.toLocaleString()} records shown
               {' · '}Net Collected = Insurance + Patient − Refunds
-              {' · '}Trend compares recent vs prior equal periods
+              {' · '}Trends compare last complete week vs prior week
             </p>
           </>
         )}
