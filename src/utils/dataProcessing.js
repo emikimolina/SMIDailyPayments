@@ -38,23 +38,137 @@ function parsePostedDate(val) {
   return null;
 }
 
-export function parseCSV(file) {
+// Field definitions with fuzzy-match keywords for auto-detection
+export const FIELD_DEFS = [
+  {
+    key: 'cptCode',
+    label: 'CPT Code',
+    required: false,
+    keywords: ['cpt code', 'cpt', 'procedure code', 'proc code', 'hcpcs', 'service code'],
+  },
+  {
+    key: 'insuranceGrouping',
+    label: 'Insurance Grouping',
+    required: true,
+    keywords: ['insurance grouping', 'ins grouping', 'payer group', 'payer category', 'ins group', 'insurance group', 'payer type'],
+  },
+  {
+    key: 'state',
+    label: 'State',
+    required: true,
+    keywords: ['state', ' st ', 'location state', 'practice state'],
+  },
+  {
+    key: 'insurancePlanName',
+    label: 'Insurance Plan Name',
+    required: false,
+    keywords: ['insurance plan name', 'plan name', 'payer name', 'insurance name', 'ins plan', 'carrier name'],
+  },
+  {
+    key: 'cptModality',
+    label: 'CPT Modality',
+    required: false,
+    keywords: ['cpt modality', 'modality', 'procedure type', 'service type', 'exam type'],
+  },
+  {
+    key: 'monthOfService',
+    label: 'Month of Service',
+    required: true,
+    keywords: ['month of service', 'service month', 'svc month', 'dos month', 'date of service month'],
+  },
+  {
+    key: 'totalPaymentAmount',
+    label: 'Total Payment Amount',
+    required: true,
+    keywords: ['total payment amount', 'total payment', 'total amount', 'gross payment', 'total pay'],
+  },
+  {
+    key: 'insurancePayment',
+    label: 'Insurance Payment',
+    required: true,
+    keywords: ['insurance payment', 'ins payment', 'payer payment', 'carrier payment', 'ins pay', 'insurance pay'],
+  },
+  {
+    key: 'patientPayment',
+    label: 'Patient Payment',
+    required: true,
+    keywords: ['patient payment', 'patient pay', 'pt payment', 'copay', 'co-pay', 'patient responsibility'],
+  },
+  {
+    key: 'refunds',
+    label: 'Refunds',
+    required: false,
+    keywords: ['refunds', 'refund', 'credit', 'refund amount'],
+  },
+  {
+    key: 'paymentPostedDate',
+    label: 'Payment Posted Date',
+    required: false,
+    keywords: ['payment posted date', 'posted date', 'post date', 'date posted', 'posting date', 'payment date'],
+  },
+];
+
+// Extract just the header row from a file without parsing all data
+export function extractHeaders(file) {
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      delimiter: '',        // auto-detect: comma, pipe, tab, etc.
-      transformHeader: h => h.trim(),  // strip any whitespace from column names
+      delimiter: '',
+      transformHeader: h => h.trim(),
+      preview: 1,
+      complete: ({ meta }) => resolve(meta.fields || []),
+      error: reject,
+    });
+  });
+}
+
+// Fuzzy-match file headers to dashboard fields
+export function detectColumnMap(headers) {
+  const normalized = headers.map(h => ({ original: h, lower: h.toLowerCase().trim() }));
+  const map = {};
+
+  for (const field of FIELD_DEFS) {
+    // 1. Exact label match (case-insensitive)
+    let found = normalized.find(({ lower }) => lower === field.label.toLowerCase());
+
+    // 2. Keyword containment match
+    if (!found) {
+      for (const kw of field.keywords) {
+        found = normalized.find(({ lower }) => lower.includes(kw) || kw.includes(lower));
+        if (found) break;
+      }
+    }
+
+    map[field.key] = found ? found.original : '';
+  }
+
+  return map;
+}
+
+// Parse full CSV using the confirmed column map
+export function parseCSV(file, columnMap) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      delimiter: '',
+      transformHeader: h => h.trim(),
       complete: ({ data }) => {
         const rows = data.map(row => {
-          const insurancePayment = parseMoney(row['Insurance Payment']);
-          const patientPayment = parseMoney(row['Patient Payment']);
-          const refunds = parseMoney(row['Refunds']);
-          const totalPaymentAmount = parseMoney(row['Total Payment Amount']);
+          const get = (key) => {
+            const col = columnMap[key];
+            return col ? String(row[col] ?? '').trim() : '';
+          };
+
+          const insurancePayment = parseMoney(get('insurancePayment'));
+          const patientPayment = parseMoney(get('patientPayment'));
+          const refunds = parseMoney(get('refunds'));
+          const totalPaymentAmount = parseMoney(get('totalPaymentAmount'));
           const netCollected = insurancePayment + patientPayment - Math.abs(refunds);
 
-          const monthEnd = parseMonthOfService(row['Month of Service']);
-          const postedDate = parsePostedDate(row['Payment Posted Date']);
+          const monthEnd = parseMonthOfService(get('monthOfService'));
+          const postedDate = parsePostedDate(get('paymentPostedDate'));
 
           let daysToPost = null;
           if (monthEnd && postedDate && isValid(monthEnd) && isValid(postedDate)) {
@@ -65,17 +179,17 @@ export function parseCSV(file) {
             ? (Math.abs(refunds) / Math.abs(totalPaymentAmount)) * 100
             : 0;
 
-          let monthLabel = String(row['Month of Service'] || '').trim();
+          let monthLabel = get('monthOfService');
           if (monthEnd && isValid(monthEnd)) {
             monthLabel = format(monthEnd, 'yyyy-MM');
           }
 
           return {
-            cptCode: String(row['CPT Code'] || '').trim(),
-            insuranceGrouping: String(row['Insurance Grouping'] || '').trim(),
-            state: String(row['State'] || '').trim(),
-            insurancePlanName: String(row['Insurance Plan Name'] || '').trim(),
-            cptModality: String(row['CPT Modality'] || '').trim(),
+            cptCode: get('cptCode'),
+            insuranceGrouping: get('insuranceGrouping'),
+            state: get('state'),
+            insurancePlanName: get('insurancePlanName'),
+            cptModality: get('cptModality'),
             monthOfService: monthLabel,
             totalPaymentAmount,
             insurancePayment,
@@ -87,6 +201,7 @@ export function parseCSV(file) {
             refundRate,
           };
         });
+
         resolve(rows);
       },
       error: reject,
