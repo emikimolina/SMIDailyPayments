@@ -173,78 +173,82 @@ export function detectColumnMap(headers) {
   return map;
 }
 
-// Parse full file using the confirmed column map — passes File directly so PapaParse streams it
+// Parse full file using step callback — processes one row at a time,
+// never builds a giant internal array, safe for files of any size
 export async function parseCSV(file, columnMap) {
   const chunk = await readChunk(file, 2048);
   const firstLine = chunk.split(/\r?\n/).find(l => l.trim()) || '';
   const delimiter = sniffDelimiter(firstLine);
+
   return new Promise((resolve, reject) => {
+    const rows = [];
+    let firstRowLogged = false;
+
+    function buildRow(raw) {
+      const get = (key) => {
+        const col = columnMap[key];
+        return col ? String(raw[col] ?? '').trim() : '';
+      };
+
+      const insurancePayment  = parseMoney(get('insurancePayment'));
+      const patientPayment    = parseMoney(get('patientPayment'));
+      const refunds           = parseMoney(get('refunds'));
+      const totalPaymentAmount = parseMoney(get('totalPaymentAmount'));
+      const netCollected      = insurancePayment + patientPayment - Math.abs(refunds);
+
+      const monthEnd   = parseMonthOfService(get('monthOfService'));
+      const postedDate = parsePostedDate(get('paymentPostedDate'));
+
+      let daysToPost = null;
+      if (monthEnd && postedDate && isValid(monthEnd) && isValid(postedDate)) {
+        daysToPost = differenceInDays(postedDate, monthEnd);
+      }
+
+      const refundRate = totalPaymentAmount !== 0
+        ? (Math.abs(refunds) / Math.abs(totalPaymentAmount)) * 100
+        : 0;
+
+      let monthLabel = get('monthOfService');
+      if (monthEnd && isValid(monthEnd)) monthLabel = format(monthEnd, 'yyyy-MM');
+
+      return {
+        cptCode:           get('cptCode'),
+        insuranceGrouping: get('insuranceGrouping'),
+        state:             get('state'),
+        insurancePlanName: get('insurancePlanName'),
+        cptModality:       get('cptModality'),
+        monthOfService:    monthLabel,
+        totalPaymentAmount,
+        insurancePayment,
+        patientPayment,
+        refunds:     Math.abs(refunds),
+        postedDate,
+        weekEnding:  postedDate && isValid(postedDate) ? format(postedDate, 'yyyy-MM-dd') : '',
+        netCollected,
+        daysToPost,
+        refundRate,
+      };
+    }
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       delimiter,
-      worker: false,
+      // ﻿ = BOM; strip it and any surrounding quotes from header names
       transformHeader: h => h.trim().replace(/^[﻿"']|["']$/g, ''),
-      complete: ({ data, errors }) => {
-        if (data.length === 0) {
-          console.warn('[parseCSV] PapaParse returned 0 rows. Errors:', errors);
-          resolve([]);
-          return;
+      step: ({ data: raw }) => {
+        if (!firstRowLogged) {
+          console.log('[parseCSV] delimiter detected:', JSON.stringify(delimiter));
+          console.log('[parseCSV] column map:', columnMap);
+          console.log('[parseCSV] first raw row keys:', Object.keys(raw));
+          console.log('[parseCSV] first raw row:', raw);
+          firstRowLogged = true;
         }
-        // Log first row so column mapping issues are visible in F12 console
-        console.log('[parseCSV] delimiter:', JSON.stringify(delimiter));
-        console.log('[parseCSV] columnMap:', columnMap);
-        console.log('[parseCSV] first raw row keys:', Object.keys(data[0]));
-        console.log('[parseCSV] first raw row:', data[0]);
-
-        const rows = data.map(row => {
-          const get = (key) => {
-            const col = columnMap[key];
-            return col ? String(row[col] ?? '').trim() : '';
-          };
-
-          const insurancePayment = parseMoney(get('insurancePayment'));
-          const patientPayment = parseMoney(get('patientPayment'));
-          const refunds = parseMoney(get('refunds'));
-          const totalPaymentAmount = parseMoney(get('totalPaymentAmount'));
-          const netCollected = insurancePayment + patientPayment - Math.abs(refunds);
-
-          const monthEnd = parseMonthOfService(get('monthOfService'));
-          const postedDate = parsePostedDate(get('paymentPostedDate'));
-
-          let daysToPost = null;
-          if (monthEnd && postedDate && isValid(monthEnd) && isValid(postedDate)) {
-            daysToPost = differenceInDays(postedDate, monthEnd);
-          }
-
-          const refundRate = totalPaymentAmount !== 0
-            ? (Math.abs(refunds) / Math.abs(totalPaymentAmount)) * 100
-            : 0;
-
-          let monthLabel = get('monthOfService');
-          if (monthEnd && isValid(monthEnd)) {
-            monthLabel = format(monthEnd, 'yyyy-MM');
-          }
-
-          return {
-            cptCode: get('cptCode'),
-            insuranceGrouping: get('insuranceGrouping'),
-            state: get('state'),
-            insurancePlanName: get('insurancePlanName'),
-            cptModality: get('cptModality'),
-            monthOfService: monthLabel,
-            totalPaymentAmount,
-            insurancePayment,
-            patientPayment,
-            refunds: Math.abs(refunds),
-            postedDate,
-            weekEnding: postedDate && isValid(postedDate) ? format(postedDate, 'yyyy-MM-dd') : '',
-            netCollected,
-            daysToPost,
-            refundRate,
-          };
-        });
-
+        rows.push(buildRow(raw));
+      },
+      complete: () => {
+        console.log('[parseCSV] done —', rows.length, 'rows');
+        if (rows.length > 0) console.log('[parseCSV] sample parsed row:', rows[0]);
         resolve(rows);
       },
       error: reject,
