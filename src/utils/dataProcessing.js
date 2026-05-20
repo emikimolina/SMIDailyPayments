@@ -43,6 +43,8 @@ export function parseCSV(file) {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      delimiter: '',        // auto-detect: comma, pipe, tab, etc.
+      transformHeader: h => h.trim(),  // strip any whitespace from column names
       complete: ({ data }) => {
         const rows = data.map(row => {
           const insurancePayment = parseMoney(row['Insurance Payment']);
