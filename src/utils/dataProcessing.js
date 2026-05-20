@@ -183,8 +183,20 @@ export async function parseCSV(file, columnMap) {
       header: true,
       skipEmptyLines: true,
       delimiter,
+      worker: false,
       transformHeader: h => h.trim().replace(/^[﻿"']|["']$/g, ''),
-      complete: ({ data }) => {
+      complete: ({ data, errors }) => {
+        if (data.length === 0) {
+          console.warn('[parseCSV] PapaParse returned 0 rows. Errors:', errors);
+          resolve([]);
+          return;
+        }
+        // Log first row so column mapping issues are visible in F12 console
+        console.log('[parseCSV] delimiter:', JSON.stringify(delimiter));
+        console.log('[parseCSV] columnMap:', columnMap);
+        console.log('[parseCSV] first raw row keys:', Object.keys(data[0]));
+        console.log('[parseCSV] first raw row:', data[0]);
+
         const rows = data.map(row => {
           const get = (key) => {
             const col = columnMap[key];

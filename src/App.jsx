@@ -59,11 +59,15 @@ export default function App() {
     setError(null);
     try {
       const parsed = await parseCSV(pendingFile, columnMap);
+      if (parsed.length === 0) {
+        setError('File was parsed but returned 0 rows. Open F12 → Console to see the raw row data and verify the column mapping is correct.');
+        return;
+      }
       setRows(parsed);
       setFilters(DEFAULT_FILTERS);
       setStage('dashboard');
-    } catch {
-      setError('Failed to parse file with the selected column mapping.');
+    } catch (e) {
+      setError(`Failed to parse file — ${e?.message ?? String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -146,19 +150,26 @@ export default function App() {
         {/* Column mapping stage */}
         {stage === 'mapping' && (
           <>
+            {loading && (
+              <div className="max-w-2xl mx-auto w-full p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 text-center">
+                Parsing file… this may take a minute for large files. Please wait.
+              </div>
+            )}
             {error && (
               <div className="max-w-2xl mx-auto w-full p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
                 {error}
               </div>
             )}
-            <ColumnMapper
-              fileName={pendingFile?.name}
-              headers={fileHeaders}
-              columnMap={columnMap}
-              onChange={setColumnMap}
-              onConfirm={handleConfirmMapping}
-              onBack={handleReset}
-            />
+            {!loading && (
+              <ColumnMapper
+                fileName={pendingFile?.name}
+                headers={fileHeaders}
+                columnMap={columnMap}
+                onChange={setColumnMap}
+                onConfirm={handleConfirmMapping}
+                onBack={handleReset}
+              />
+            )}
           </>
         )}
 
