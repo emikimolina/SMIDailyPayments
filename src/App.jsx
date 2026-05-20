@@ -27,6 +27,8 @@ const DEFAULT_FILTERS = {
   cptModalities: [],
   dateFrom: null,
   dateTo: null,
+  postingWeekFrom: null,
+  postingWeekTo: null,
 };
 
 export default function App() {

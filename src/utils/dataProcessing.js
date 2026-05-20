@@ -257,21 +257,28 @@ export async function parseCSV(file, columnMap) {
 }
 
 export function getFilterOptions(rows) {
+  const today = format(new Date(), 'yyyy-MM-dd');
   return {
     states: [...new Set(rows.map(r => r.state).filter(Boolean))].sort(),
     insuranceGroupings: [...new Set(rows.map(r => r.insuranceGrouping).filter(Boolean))].sort(),
     cptModalities: [...new Set(rows.map(r => r.cptModality).filter(Boolean))].sort(),
     months: [...new Set(rows.map(r => r.monthOfService).filter(Boolean))].sort(),
+    postingWeeks: [...new Set(rows.map(r => r.weekEnding).filter(w => w && w <= today))].sort(),
   };
 }
 
 export function applyFilters(rows, filters) {
+  const today = format(new Date(), 'yyyy-MM-dd');
   return rows.filter(row => {
+    // Always exclude incomplete posting weeks (future Sundays)
+    if (row.weekEnding && row.weekEnding > today) return false;
     if (filters.states.length > 0 && !filters.states.includes(row.state)) return false;
     if (filters.insuranceGroupings.length > 0 && !filters.insuranceGroupings.includes(row.insuranceGrouping)) return false;
     if (filters.cptModalities.length > 0 && !filters.cptModalities.includes(row.cptModality)) return false;
     if (filters.dateFrom && row.monthOfService < filters.dateFrom) return false;
     if (filters.dateTo && row.monthOfService > filters.dateTo) return false;
+    if (filters.postingWeekFrom && row.weekEnding && row.weekEnding < filters.postingWeekFrom) return false;
+    if (filters.postingWeekTo && row.weekEnding && row.weekEnding > filters.postingWeekTo) return false;
     return true;
   });
 }
@@ -386,46 +393,85 @@ export function computeWeeklyTrend(rows) {
   return { chartData, groupings };
 }
 
-// Trend direction: compare recent half of weeks vs prior half per payer
+// WoW trend summary: last complete week vs prior week, nested InsCoName → InsurancePlanName
 export function computeTrendSummary(rows) {
   const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
-  if (allWeeks.length < 2) return [];
+  if (allWeeks.length < 2) return { currentWeek: null, priorWeek: null, data: [] };
 
-  const half = Math.max(1, Math.floor(allWeeks.length / 2));
-  const recentSet = new Set(allWeeks.slice(-half));
-  const priorSet = new Set(allWeeks.slice(0, half));
+  const currentWeek = allWeeks[allWeeks.length - 1];
+  const priorWeek   = allWeeks[allWeeks.length - 2];
 
-  const groups = {};
+  const coGroups = {};
+
   for (const row of rows) {
-    const g = row.insuranceGrouping || 'Unknown';
-    if (!groups[g]) groups[g] = { grouping: g, recent: 0, prior: 0 };
-    if (row.weekEnding && recentSet.has(row.weekEnding)) groups[g].recent += row.netCollected;
-    if (row.weekEnding && priorSet.has(row.weekEnding)) groups[g].prior += row.netCollected;
+    if (row.weekEnding !== currentWeek && row.weekEnding !== priorWeek) continue;
+    const co   = row.insuranceGrouping || 'Unknown';
+    const plan = row.insurancePlanName || '(No Plan)';
+    const isCurrent = row.weekEnding === currentWeek;
+
+    if (!coGroups[co]) {
+      coGroups[co] = {
+        insCoName: co,
+        current: { ins: 0, pat: 0, ref: 0, net: 0 },
+        prior:   { ins: 0, pat: 0, ref: 0, net: 0 },
+        plans: {},
+      };
+    }
+    const g = coGroups[co];
+    const period = isCurrent ? g.current : g.prior;
+    period.ins += row.insurancePayment;
+    period.pat += row.patientPayment;
+    period.ref += row.refunds;
+    period.net += row.netCollected;
+
+    if (!g.plans[plan]) {
+      g.plans[plan] = {
+        planName: plan,
+        current: { ins: 0, pat: 0, ref: 0, net: 0 },
+        prior:   { ins: 0, pat: 0, ref: 0, net: 0 },
+      };
+    }
+    const pp = isCurrent ? g.plans[plan].current : g.plans[plan].prior;
+    pp.ins += row.insurancePayment;
+    pp.pat += row.patientPayment;
+    pp.ref += row.refunds;
+    pp.net += row.netCollected;
   }
 
-  return Object.values(groups).map(g => {
-    const pctChange = g.prior !== 0 ? ((g.recent - g.prior) / Math.abs(g.prior)) * 100 : null;
+  const pctChg = (cur, pri) => pri !== 0 ? ((cur - pri) / Math.abs(pri)) * 100 : null;
+
+  const data = Object.values(coGroups).map(g => {
+    const netPct = pctChg(g.current.net, g.prior.net);
     return {
-      ...g,
-      pctChange,
-      total: g.recent + g.prior,
-      direction: pctChange === null ? 'flat' : pctChange > 1 ? 'up' : pctChange < -1 ? 'down' : 'flat',
+      insCoName: g.insCoName,
+      current:   g.current,
+      prior:     g.prior,
+      netPctChange: netPct,
+      direction: netPct === null ? 'flat' : netPct > 1 ? 'up' : netPct < -1 ? 'down' : 'flat',
+      total: g.current.net + g.prior.net,
+      plans: Object.values(g.plans).map(p => ({
+        ...p,
+        netPctChange: pctChg(p.current.net, p.prior.net),
+        direction: (() => { const v = pctChg(p.current.net, p.prior.net); return v === null ? 'flat' : v > 1 ? 'up' : v < -1 ? 'down' : 'flat'; })(),
+      })).sort((a, b) => (b.current.net + b.prior.net) - (a.current.net + a.prior.net)),
     };
   }).sort((a, b) => b.total - a.total);
+
+  return { currentWeek, priorWeek, data };
 }
 
-// KPI period-over-period: compare last 4 weeks vs the 4 before that
+// KPI WoW: compare last complete week vs prior week
 export function computeKPITrends(rows) {
   const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
   if (allWeeks.length < 2) return null;
 
-  const count = Math.min(4, Math.max(1, Math.floor(allWeeks.length / 2)));
-  const recentSet = new Set(allWeeks.slice(-count));
-  const priorSet = new Set(allWeeks.slice(-count * 2, -count));
-  if (!priorSet.size) return null;
+  const currentWeek = allWeeks[allWeeks.length - 1];
+  const priorWeek   = allWeeks[allWeeks.length - 2];
 
-  const recent = rows.filter(r => r.weekEnding && recentSet.has(r.weekEnding));
-  const prior  = rows.filter(r => r.weekEnding && priorSet.has(r.weekEnding));
+  const recent = rows.filter(r => r.weekEnding === currentWeek);
+  const prior  = rows.filter(r => r.weekEnding === priorWeek);
+  if (!prior.length) return null;
+
   const rk = computeKPIs(recent);
   const pk = computeKPIs(prior);
 

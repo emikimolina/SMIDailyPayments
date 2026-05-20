@@ -1,6 +1,6 @@
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend, ResponsiveContainer,
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 
@@ -29,7 +29,7 @@ function CustomTooltip({ active, payload, label }) {
       <p className="text-[#697386] mb-2 font-medium">Total: {fmtMoney(total)}</p>
       {[...payload].sort((a, b) => b.value - a.value).map(p => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.fill }} />
           <span className="text-[#3C4257] flex-1 truncate max-w-[120px]">{p.dataKey}</span>
           <span className="font-mono text-[#1A1F36] font-semibold">{fmtMoney(p.value)}</span>
         </div>
@@ -38,8 +38,7 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-function CustomTick({ x, y, payload, index, data }) {
-  // Show label every 4 weeks to avoid crowding
+function CustomTick({ x, y, payload, index }) {
   if (index % 4 !== 0) return null;
   return (
     <text x={x} y={y + 12} textAnchor="middle" fill="#697386" fontSize={11}>
@@ -68,11 +67,11 @@ export default function WeeklyTrendChart({ data, groupings }) {
         <p className="text-sm text-[#1A1F36] font-semibold">Net Collected by Posting Week — Top {groupings.length} Payers</p>
       </div>
       <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: 8 }}>
+        <AreaChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
           <XAxis
             dataKey="week"
-            tick={<CustomTick data={data} />}
+            tick={<CustomTick />}
             tickLine={false}
             axisLine={{ stroke: '#E3E8EE' }}
             height={30}
@@ -91,17 +90,20 @@ export default function WeeklyTrendChart({ data, groupings }) {
             iconSize={8}
           />
           {groupings.map((g, i) => (
-            <Line
+            <Area
               key={g}
               type="monotone"
               dataKey={g}
+              stackId="1"
               stroke={COLORS[i % COLORS.length]}
-              strokeWidth={2}
+              fill={COLORS[i % COLORS.length]}
+              fillOpacity={0.55}
+              strokeWidth={1.5}
               dot={false}
               activeDot={{ r: 4, strokeWidth: 0 }}
             />
           ))}
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
