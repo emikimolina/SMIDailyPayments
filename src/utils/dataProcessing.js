@@ -136,22 +136,18 @@ function sniffDelimiter(firstLine) {
   return candidates.sort((a, b) => b.n - a.n)[0].d;
 }
 
-// Extract just the header row from a file without parsing all data
+// Extract headers by reading and splitting the first line directly — no PapaParse needed
 export async function extractHeaders(file) {
   const text = await readFileText(file);
-  const firstLine = text.split(/\r?\n/)[0];
+  const firstLine = text.split(/\r?\n/).find(l => l.trim()); // skip any blank leading lines
+  if (!firstLine) throw new Error('File appears to be empty');
   const delimiter = sniffDelimiter(firstLine);
-  return new Promise((resolve, reject) => {
-    Papa.parse(text, {
-      header: true,
-      skipEmptyLines: true,
-      delimiter,
-      transformHeader: h => h.trim(),
-      preview: 1,
-      complete: ({ meta }) => resolve(meta.fields || []),
-      error: reject,
-    });
-  });
+  const headers = firstLine
+    .split(delimiter)
+    .map(h => h.trim().replace(/^["']|["']$/g, '')); // strip surrounding quotes
+  const valid = headers.filter(Boolean);
+  if (!valid.length) throw new Error('No column headers found in first line');
+  return valid;
 }
 
 // Fuzzy-match file headers to dashboard fields
