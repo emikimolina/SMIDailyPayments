@@ -112,17 +112,17 @@ export const FIELD_DEFS = [
   },
 ];
 
-// Read file as text, stripping UTF-8 BOM if present
-function readFileText(file) {
+// Read only a small slice of the file as text — fast even for huge files
+function readChunk(file, bytes = 2048) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = e => {
-      let text = e.target.result;
+      let text = e.target.result ?? '';
       if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
       resolve(text);
     };
     reader.onerror = reject;
-    reader.readAsText(file);
+    reader.readAsText(file.slice(0, bytes));
   });
 }
 
@@ -136,17 +136,17 @@ function sniffDelimiter(firstLine) {
   return candidates.sort((a, b) => b.n - a.n)[0].d;
 }
 
-// Extract headers by reading and splitting the first line directly — no PapaParse needed
+// Read only the first 2KB to extract headers — safe for files of any size
 export async function extractHeaders(file) {
-  const text = await readFileText(file);
-  const firstLine = text.split(/\r?\n/).find(l => l.trim()); // skip any blank leading lines
-  if (!firstLine) throw new Error('File appears to be empty');
+  const chunk = await readChunk(file, 2048);
+  const firstLine = chunk.split(/\r?\n/).find(l => l.trim());
+  if (!firstLine) throw new Error('Could not find a header row in the first 2KB of the file');
   const delimiter = sniffDelimiter(firstLine);
   const headers = firstLine
     .split(delimiter)
-    .map(h => h.trim().replace(/^["']|["']$/g, '')); // strip surrounding quotes
+    .map(h => h.trim().replace(/^["']|["']$/g, ''));
   const valid = headers.filter(Boolean);
-  if (!valid.length) throw new Error('No column headers found in first line');
+  if (!valid.length) throw new Error('First line contains no recognizable column headers');
   return valid;
 }
 
@@ -173,17 +173,17 @@ export function detectColumnMap(headers) {
   return map;
 }
 
-// Parse full CSV using the confirmed column map
+// Parse full file using the confirmed column map — passes File directly so PapaParse streams it
 export async function parseCSV(file, columnMap) {
-  const text = await readFileText(file);
-  const firstLine = text.split(/\r?\n/)[0];
+  const chunk = await readChunk(file, 2048);
+  const firstLine = chunk.split(/\r?\n/).find(l => l.trim()) || '';
   const delimiter = sniffDelimiter(firstLine);
   return new Promise((resolve, reject) => {
-    Papa.parse(text, {
+    Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       delimiter,
-      transformHeader: h => h.trim(),
+      transformHeader: h => h.trim().replace(/^[﻿"']|["']$/g, ''),
       complete: ({ data }) => {
         const rows = data.map(row => {
           const get = (key) => {
