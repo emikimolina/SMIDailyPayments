@@ -47,8 +47,8 @@ export default function App() {
       setFileHeaders(headers);
       setColumnMap(detectColumnMap(headers));
       setStage('mapping');
-    } catch {
-      setError('Could not read file headers. Make sure it is a valid CSV or pipe-delimited text file.');
+    } catch (e) {
+      setError(`Could not read file headers: ${e?.message || e}. Make sure it is a valid CSV or pipe-delimited text file.`);
     } finally {
       setLoading(false);
     }

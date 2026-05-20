@@ -38,81 +38,89 @@ function parsePostedDate(val) {
   return null;
 }
 
-// Field definitions with fuzzy-match keywords for auto-detection
+// Field definitions with fuzzy-match keywords for auto-detection.
+// Keywords are lowercase; exact header names from the known export are listed first.
 export const FIELD_DEFS = [
   {
     key: 'cptCode',
     label: 'CPT Code',
     required: false,
-    keywords: ['cpt code', 'cpt', 'procedure code', 'proc code', 'hcpcs', 'service code'],
+    keywords: ['cptcode', 'cpt code', 'cpt', 'procedure code', 'proc code', 'hcpcs', 'service code'],
   },
   {
     key: 'insuranceGrouping',
     label: 'Insurance Grouping',
     required: true,
-    keywords: ['insurance grouping', 'ins grouping', 'payer group', 'payer category', 'ins group', 'insurance group', 'payer type'],
+    keywords: ['insconame', 'insurancetype', 'insurance type', 'insurance grouping', 'ins grouping',
+               'payer group', 'payer category', 'ins group', 'insurance group', 'payer type', 'ins co name'],
   },
   {
     key: 'state',
     label: 'State',
     required: true,
-    keywords: ['state', ' st ', 'location state', 'practice state'],
+    keywords: ['locstate', 'loc state', 'state', 'location state', 'practice state'],
   },
   {
     key: 'insurancePlanName',
     label: 'Insurance Plan Name',
     required: false,
-    keywords: ['insurance plan name', 'plan name', 'payer name', 'insurance name', 'ins plan', 'carrier name'],
+    keywords: ['insuranceplanname', 'insurance plan name', 'plan name', 'payer name',
+               'insurance name', 'ins plan', 'carrier name'],
   },
   {
     key: 'cptModality',
     label: 'CPT Modality',
     required: false,
-    keywords: ['cpt modality', 'modality', 'procedure type', 'service type', 'exam type'],
+    keywords: ['modality', 'cpt modality', 'procedure type', 'service type', 'exam type'],
   },
   {
     key: 'monthOfService',
     label: 'Month of Service',
     required: true,
-    keywords: ['month of service', 'service month', 'svc month', 'dos month', 'date of service month'],
+    keywords: ['monthofservice', 'month of service', 'service month', 'svc month', 'dos month'],
   },
   {
     key: 'totalPaymentAmount',
     label: 'Total Payment Amount',
     required: true,
-    keywords: ['total payment amount', 'total payment', 'total amount', 'gross payment', 'total pay'],
+    keywords: ['totpmt', 'tot pmt', 'total payment amount', 'total payment', 'total amount', 'gross payment'],
   },
   {
     key: 'insurancePayment',
     label: 'Insurance Payment',
     required: true,
-    keywords: ['insurance payment', 'ins payment', 'payer payment', 'carrier payment', 'ins pay', 'insurance pay'],
+    keywords: ['inspmt', 'ins pmt', 'insurance payment', 'ins payment', 'payer payment', 'carrier payment'],
   },
   {
     key: 'patientPayment',
     label: 'Patient Payment',
     required: true,
-    keywords: ['patient payment', 'patient pay', 'pt payment', 'copay', 'co-pay', 'patient responsibility'],
+    keywords: ['patpmt', 'pat pmt', 'patient payment', 'patient pay', 'pt payment', 'copay'],
   },
   {
     key: 'refunds',
     label: 'Refunds',
     required: false,
-    keywords: ['refunds', 'refund', 'credit', 'refund amount'],
+    keywords: ['refund', 'refunds', 'credit', 'refund amount'],
   },
   {
     key: 'paymentPostedDate',
     label: 'Payment Posted Date',
     required: false,
-    keywords: ['payment posted date', 'posted date', 'post date', 'date posted', 'posting date', 'payment date'],
+    keywords: ['week_ending_sunday', 'week ending sunday', 'paymonth', 'pay month',
+               'payment posted date', 'posted date', 'post date', 'date posted', 'posting date'],
   },
 ];
 
-// Read file as text, sniff the delimiter from the first line
+// Read file as text, stripping UTF-8 BOM if present
 function readFileText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
+    reader.onload = e => {
+      let text = e.target.result;
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+      resolve(text);
+    };
     reader.onerror = reject;
     reader.readAsText(file);
   });
