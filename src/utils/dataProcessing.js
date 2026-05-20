@@ -108,13 +108,36 @@ export const FIELD_DEFS = [
   },
 ];
 
-// Extract just the header row from a file without parsing all data
-export function extractHeaders(file) {
+// Read file as text, sniff the delimiter from the first line
+function readFileText(file) {
   return new Promise((resolve, reject) => {
-    Papa.parse(file, {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function sniffDelimiter(firstLine) {
+  const candidates = [
+    { d: '|',  n: (firstLine.match(/\|/g)  || []).length },
+    { d: '\t', n: (firstLine.match(/\t/g)  || []).length },
+    { d: ',',  n: (firstLine.match(/,/g)   || []).length },
+    { d: ';',  n: (firstLine.match(/;/g)   || []).length },
+  ];
+  return candidates.sort((a, b) => b.n - a.n)[0].d;
+}
+
+// Extract just the header row from a file without parsing all data
+export async function extractHeaders(file) {
+  const text = await readFileText(file);
+  const firstLine = text.split(/\r?\n/)[0];
+  const delimiter = sniffDelimiter(firstLine);
+  return new Promise((resolve, reject) => {
+    Papa.parse(text, {
       header: true,
       skipEmptyLines: true,
-      delimiter: '',
+      delimiter,
       transformHeader: h => h.trim(),
       preview: 1,
       complete: ({ meta }) => resolve(meta.fields || []),
@@ -147,12 +170,15 @@ export function detectColumnMap(headers) {
 }
 
 // Parse full CSV using the confirmed column map
-export function parseCSV(file, columnMap) {
+export async function parseCSV(file, columnMap) {
+  const text = await readFileText(file);
+  const firstLine = text.split(/\r?\n/)[0];
+  const delimiter = sniffDelimiter(firstLine);
   return new Promise((resolve, reject) => {
-    Papa.parse(file, {
+    Papa.parse(text, {
       header: true,
       skipEmptyLines: true,
-      delimiter: '',
+      delimiter,
       transformHeader: h => h.trim(),
       complete: ({ data }) => {
         const rows = data.map(row => {
