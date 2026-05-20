@@ -12,14 +12,14 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((s, p) => s + (p.value || 0), 0);
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
-      <p className="font-semibold text-slate-700 mb-2">{label}</p>
+    <div className="bg-white border border-[#E3E8EE] rounded-xl shadow-lg p-3 text-xs">
+      <p className="font-semibold text-[#1A1F36] mb-2">{label}</p>
       {payload.map(p => (
         <div key={p.dataKey} className="flex items-center gap-2 mb-1">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.fill }} />
-          <span className="text-slate-600">{p.name}</span>
-          <span className="font-mono font-medium text-slate-800 ml-auto pl-2">{fmtMoney(p.value)}</span>
-          <span className="text-slate-400">({total > 0 ? ((p.value / total) * 100).toFixed(1) : 0}%)</span>
+          <span className="text-[#3C4257]">{p.name}</span>
+          <span className="font-mono font-semibold text-[#1A1F36] ml-auto pl-2">{fmtMoney(p.value)}</span>
+          <span className="text-[#697386]">({total > 0 ? ((p.value / total) * 100).toFixed(0) : 0}%)</span>
         </div>
       ))}
     </div>
@@ -29,40 +29,38 @@ function CustomTooltip({ active, payload, label }) {
 export default function StateComparisonChart({ data }) {
   if (!data.length) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-slate-700">Insurance vs Patient Mix by State</h2>
-        <div className="h-64 flex items-center justify-center text-slate-400 text-sm">No data</div>
+      <div className="bg-white rounded-xl border border-[#E3E8EE] shadow-sm p-5">
+        <p className="text-xs font-semibold text-[#697386] uppercase tracking-wider mb-0.5">State Mix</p>
+        <p className="text-sm font-semibold text-[#1A1F36] mb-4">Insurance vs Patient by State</p>
+        <div className="h-64 flex items-center justify-center text-[#697386] text-sm">No data available</div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-slate-700">Insurance vs Patient Mix by State</h2>
-      <ResponsiveContainer width="100%" height={280}>
+    <div className="bg-white rounded-xl border border-[#E3E8EE] shadow-sm p-5">
+      <p className="text-xs font-semibold text-[#697386] uppercase tracking-wider mb-0.5">State Mix</p>
+      <p className="text-sm font-semibold text-[#1A1F36] mb-4">Insurance vs Patient by State</p>
+      <ResponsiveContainer width="100%" height={260}>
         <BarChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
           <XAxis
             dataKey="state"
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
+            tick={{ fontSize: 11, fill: '#697386' }}
             tickLine={false}
-            axisLine={{ stroke: '#e2e8f0' }}
+            axisLine={{ stroke: '#E3E8EE' }}
           />
           <YAxis
             tickFormatter={fmtMoney}
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
+            tick={{ fontSize: 11, fill: '#697386' }}
             tickLine={false}
             axisLine={false}
             width={60}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend
-            wrapperStyle={{ fontSize: 11, color: '#64748b' }}
-            iconType="circle"
-            iconSize={8}
-          />
-          <Bar dataKey="insurancePayment" name="Insurance Payment" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-          <Bar dataKey="patientPayment" name="Patient Payment" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+          <Legend wrapperStyle={{ fontSize: 11, color: '#697386' }} iconType="circle" iconSize={8} />
+          <Bar dataKey="insurancePayment" name="Insurance" fill="#5469D4" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="patientPayment"   name="Patient"   fill="#7C3AED" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

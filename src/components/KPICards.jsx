@@ -1,71 +1,85 @@
 function fmt(n, style, digits = 0) {
-  return new Intl.NumberFormat('en-US', { style, currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+  return new Intl.NumberFormat('en-US', {
+    style, currency: 'USD',
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(n);
 }
 
-function Card({ title, value, sub, color, icon }) {
-  const colors = {
-    blue: 'from-blue-500 to-blue-600',
-    emerald: 'from-emerald-500 to-emerald-600',
-    violet: 'from-violet-500 to-violet-600',
-    rose: 'from-rose-500 to-rose-600',
-    amber: 'from-amber-500 to-amber-600',
-  };
+function TrendBadge({ value, isPointChange = false, invert = false }) {
+  if (value === null || value === undefined) return null;
+  const abs = Math.abs(value);
+  if (abs < 0.05) return <span className="text-xs text-[#697386]">— flat</span>;
+
+  const positive = invert ? value < 0 : value > 0;
+  const colorCls = positive
+    ? 'text-[#09825D] bg-[#ECFDF5]'
+    : 'text-[#C0123C] bg-[#FFF1F2]';
+  const arrow = positive ? '↑' : '↓';
+  const label = isPointChange
+    ? `${arrow} ${abs.toFixed(1)} pp`
+    : `${arrow} ${abs.toFixed(1)}%`;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-3 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</span>
-        <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${colors[color]} flex items-center justify-center text-white text-sm`}>
-          {icon}
-        </div>
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-slate-800 tracking-tight">{value}</p>
-        {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+    <span className={`inline-flex items-center text-xs font-semibold px-1.5 py-0.5 rounded-full ${colorCls}`}>
+      {label}
+    </span>
+  );
+}
+
+function Card({ title, value, sub, trend, isPointChange, invert }) {
+  return (
+    <div className="bg-white rounded-xl border border-[#E3E8EE] p-5 flex flex-col gap-2 shadow-sm">
+      <p className="text-xs font-semibold text-[#697386] uppercase tracking-wider">{title}</p>
+      <p className="text-[1.6rem] font-bold text-[#1A1F36] leading-none tracking-tight">{value}</p>
+      <div className="flex items-center gap-2 min-h-[20px]">
+        {sub && <span className="text-xs text-[#697386]">{sub}</span>}
+        <TrendBadge value={trend} isPointChange={isPointChange} invert={invert} />
       </div>
     </div>
   );
 }
 
-export default function KPICards({ kpis, rowCount }) {
+export default function KPICards({ kpis, trends, rowCount }) {
   const { totalCollected, insurancePct, patientPct, refundRate, avgDaysToPost } = kpis;
+  const t = trends || {};
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
       <Card
-        title="Total Net Collected"
+        title="Net Collected"
         value={fmt(totalCollected, 'currency')}
-        sub={`${rowCount.toLocaleString()} claims`}
-        color="blue"
-        icon="$"
+        sub={`${rowCount.toLocaleString()} records`}
+        trend={t.totalCollected}
       />
       <Card
         title="Insurance Mix"
         value={`${insurancePct.toFixed(1)}%`}
         sub="of total payments"
-        color="emerald"
-        icon="I"
+        trend={t.insurancePct}
+        isPointChange
       />
       <Card
         title="Patient Mix"
         value={`${patientPct.toFixed(1)}%`}
         sub="of total payments"
-        color="violet"
-        icon="P"
+        trend={t.patientPct}
+        isPointChange
       />
       <Card
         title="Refund Rate"
         value={`${refundRate.toFixed(2)}%`}
-        sub="refunds / total payment"
-        color="rose"
-        icon="R"
+        sub="refunds / total"
+        trend={t.refundRate}
+        isPointChange
+        invert
       />
       <Card
         title="Avg Days to Post"
-        value={avgDaysToPost !== null ? `${avgDaysToPost.toFixed(1)}d` : '—'}
+        value={avgDaysToPost ? `${avgDaysToPost.toFixed(1)}d` : '—'}
         sub="posted − month end"
-        color="amber"
-        icon="D"
+        trend={t.avgDaysToPost}
+        invert
       />
     </div>
   );

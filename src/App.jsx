@@ -3,8 +3,9 @@ import FileUpload from './components/FileUpload.jsx';
 import Filters from './components/Filters.jsx';
 import KPICards from './components/KPICards.jsx';
 import PayerScorecard from './components/PayerScorecard.jsx';
-import MonthlyTrendChart from './components/MonthlyTrendChart.jsx';
+import WeeklyTrendChart from './components/WeeklyTrendChart.jsx';
 import StateComparisonChart from './components/StateComparisonChart.jsx';
+import TrendSummary from './components/TrendSummary.jsx';
 import ColumnMapper from './components/ColumnMapper.jsx';
 import {
   extractHeaders,
@@ -13,8 +14,10 @@ import {
   getFilterOptions,
   applyFilters,
   computeKPIs,
+  computeKPITrends,
   computePayerScorecard,
-  computeMonthlyTrend,
+  computeWeeklyTrend,
+  computeTrendSummary,
   computeStateComparison,
 } from './utils/dataProcessing.js';
 
@@ -26,7 +29,6 @@ const DEFAULT_FILTERS = {
   dateTo: null,
 };
 
-// stage: 'upload' | 'mapping' | 'dashboard'
 export default function App() {
   const [stage, setStage] = useState('upload');
   const [pendingFile, setPendingFile] = useState(null);
@@ -60,7 +62,7 @@ export default function App() {
     try {
       const parsed = await parseCSV(pendingFile, columnMap);
       if (parsed.length === 0) {
-        setError('File was parsed but returned 0 rows. Open F12 → Console to see the raw row data and verify the column mapping is correct.');
+        setError('File parsed but returned 0 rows. Open F12 → Console to inspect the column mapping.');
         return;
       }
       setRows(parsed);
@@ -83,26 +85,25 @@ export default function App() {
     setError(null);
   }, []);
 
-  const filterOptions = useMemo(() => rows ? getFilterOptions(rows) : null, [rows]);
-  const filtered = useMemo(() => rows ? applyFilters(rows, filters) : [], [rows, filters]);
-  const kpis = useMemo(() => computeKPIs(filtered), [filtered]);
-  const scorecard = useMemo(() => computePayerScorecard(filtered), [filtered]);
-  const trend = useMemo(() => computeMonthlyTrend(filtered), [filtered]);
-  const stateData = useMemo(() => computeStateComparison(filtered), [filtered]);
+  const filterOptions  = useMemo(() => rows ? getFilterOptions(rows) : null, [rows]);
+  const filtered       = useMemo(() => rows ? applyFilters(rows, filters) : [], [rows, filters]);
+  const kpis           = useMemo(() => computeKPIs(filtered), [filtered]);
+  const kpiTrends      = useMemo(() => computeKPITrends(filtered), [filtered]);
+  const scorecard      = useMemo(() => computePayerScorecard(filtered), [filtered]);
+  const weeklyTrend    = useMemo(() => computeWeeklyTrend(filtered), [filtered]);
+  const trendSummary   = useMemo(() => computeTrendSummary(filtered), [filtered]);
+  const stateData      = useMemo(() => computeStateComparison(filtered), [filtered]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#F6F9FC]">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="bg-white border-b border-[#E3E8EE] sticky top-0 z-10">
         <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-              <span className="text-white text-xs font-bold">SMI</span>
+            <div className="w-8 h-8 bg-[#5469D4] rounded-lg flex items-center justify-center">
+              <span className="text-white text-xs font-bold tracking-tight">SMI</span>
             </div>
-            <div>
-              <h1 className="text-sm font-semibold text-slate-800">Payer Performance Dashboard</h1>
-              <p className="text-xs text-slate-400">Radiology · AZ · FL · NV · CA · TX · NY</p>
-            </div>
+            <p className="text-sm font-semibold text-[#1A1F36]">Payer Performance Dashboard</p>
           </div>
 
           {stage !== 'upload' && (
@@ -110,53 +111,53 @@ export default function App() {
               {stage === 'dashboard' && (
                 <button
                   onClick={() => setStage('mapping')}
-                  className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+                  className="text-xs text-[#697386] hover:text-[#3C4257] border border-[#E3E8EE] rounded-lg px-3 py-1.5 hover:bg-[#F6F9FC] transition-colors"
                 >
                   Re-map columns
                 </button>
               )}
-              <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-2 text-xs text-[#697386] bg-[#F6F9FC] border border-[#E3E8EE] rounded-lg px-3 py-1.5">
+                <svg className="w-3.5 h-3.5 text-[#09825D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 {pendingFile?.name}
-                <button onClick={handleReset} className="ml-1 text-slate-400 hover:text-slate-600">✕</button>
+                <button onClick={handleReset} className="ml-1 text-[#697386] hover:text-[#1A1F36]">✕</button>
               </div>
             </div>
           )}
         </div>
       </header>
 
-      <main className="max-w-screen-xl mx-auto px-6 py-6 flex flex-col gap-6">
+      <main className="max-w-screen-xl mx-auto px-6 py-8 flex flex-col gap-6">
 
-        {/* Upload stage */}
+        {/* Upload */}
         {stage === 'upload' && (
           <div className="max-w-lg mx-auto w-full mt-16">
             <div className="text-center mb-8">
-              <h2 className="text-xl font-semibold text-slate-800 mb-2">Upload Payment Data</h2>
-              <p className="text-sm text-slate-500">
-                Export your practice management file and drop it below. You'll map your column names next.
+              <h2 className="text-2xl font-bold text-[#1A1F36] mb-2">Upload Payment Data</h2>
+              <p className="text-sm text-[#697386]">
+                Drop your practice management export below. You'll map column names on the next screen.
               </p>
             </div>
             <FileUpload onFileLoaded={handleFileLoaded} loading={loading} />
             {error && (
-              <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
+              <div className="mt-4 p-3 bg-[#FFF1F2] border border-[#FFC9D2] rounded-lg text-sm text-[#C0123C]">
                 {error}
               </div>
             )}
           </div>
         )}
 
-        {/* Column mapping stage */}
+        {/* Column mapping */}
         {stage === 'mapping' && (
           <>
             {loading && (
-              <div className="max-w-2xl mx-auto w-full p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 text-center">
-                Parsing file… this may take a minute for large files. Please wait.
+              <div className="max-w-2xl mx-auto w-full p-4 bg-[#EEF2FF] border border-[#C7D7FD] rounded-xl text-sm text-[#5469D4] text-center font-medium">
+                Parsing file — this may take a minute for large files. Please wait…
               </div>
             )}
             {error && (
-              <div className="max-w-2xl mx-auto w-full p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
+              <div className="max-w-2xl mx-auto w-full p-3 bg-[#FFF1F2] border border-[#FFC9D2] rounded-xl text-sm text-[#C0123C]">
                 {error}
               </div>
             )}
@@ -173,20 +174,26 @@ export default function App() {
           </>
         )}
 
-        {/* Dashboard stage */}
+        {/* Dashboard */}
         {stage === 'dashboard' && (
           <>
             <Filters options={filterOptions} filters={filters} onChange={setFilters} />
-            <KPICards kpis={kpis} rowCount={filtered.length} />
+
+            <KPICards kpis={kpis} trends={kpiTrends} rowCount={filtered.length} />
+
+            <WeeklyTrendChart data={weeklyTrend.chartData} groupings={weeklyTrend.groupings} />
+
+            <TrendSummary data={trendSummary} />
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <MonthlyTrendChart data={trend.chartData} groupings={trend.groupings} />
               <StateComparisonChart data={stateData} />
+              <PayerScorecard data={scorecard} />
             </div>
-            <PayerScorecard data={scorecard} />
-            <p className="text-xs text-slate-400 text-center pb-2">
-              Showing {filtered.length.toLocaleString()} of {rows.length.toLocaleString()} claims
+
+            <p className="text-xs text-[#697386] text-center pb-4">
+              {filtered.length.toLocaleString()} of {rows.length.toLocaleString()} records shown
               {' · '}Net Collected = Insurance + Patient − Refunds
-              {' · '}Days to Post = Posted Date − Last Day of Month of Service
+              {' · '}Trend compares recent vs prior equal periods
             </p>
           </>
         )}

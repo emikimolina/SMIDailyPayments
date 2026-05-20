@@ -238,6 +238,7 @@ export async function parseCSV(file, columnMap) {
             patientPayment,
             refunds: Math.abs(refunds),
             postedDate,
+            weekEnding: postedDate && isValid(postedDate) ? format(postedDate, 'yyyy-MM-dd') : '',
             netCollected,
             daysToPost,
             refundRate,
@@ -347,6 +348,93 @@ export function computeMonthlyTrend(rows) {
   });
 
   return { chartData, groupings };
+}
+
+// Weekly trend: group by weekEnding × insuranceGrouping, top 8 payers by volume
+export function computeWeeklyTrend(rows) {
+  const cell = {};
+  for (const row of rows) {
+    const week = row.weekEnding;
+    if (!week) continue;
+    const g = row.insuranceGrouping || 'Unknown';
+    const k = `${week}|||${g}`;
+    if (!cell[k]) cell[k] = { week, grp: g, val: 0 };
+    cell[k].val += row.netCollected;
+  }
+
+  const weeks = [...new Set(Object.values(cell).map(c => c.week))].sort();
+  const allGroupings = [...new Set(Object.values(cell).map(c => c.grp))];
+
+  const totals = {};
+  for (const c of Object.values(cell)) totals[c.grp] = (totals[c.grp] || 0) + c.val;
+  const groupings = allGroupings.sort((a, b) => (totals[b] || 0) - (totals[a] || 0)).slice(0, 8);
+
+  const chartData = weeks.map(week => {
+    const entry = { week };
+    for (const g of groupings) {
+      const k = `${week}|||${g}`;
+      entry[g] = cell[k] ? cell[k].val : 0;
+    }
+    entry._total = groupings.reduce((s, g) => s + (entry[g] || 0), 0);
+    return entry;
+  });
+
+  return { chartData, groupings };
+}
+
+// Trend direction: compare recent half of weeks vs prior half per payer
+export function computeTrendSummary(rows) {
+  const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
+  if (allWeeks.length < 2) return [];
+
+  const half = Math.max(1, Math.floor(allWeeks.length / 2));
+  const recentSet = new Set(allWeeks.slice(-half));
+  const priorSet = new Set(allWeeks.slice(0, half));
+
+  const groups = {};
+  for (const row of rows) {
+    const g = row.insuranceGrouping || 'Unknown';
+    if (!groups[g]) groups[g] = { grouping: g, recent: 0, prior: 0 };
+    if (row.weekEnding && recentSet.has(row.weekEnding)) groups[g].recent += row.netCollected;
+    if (row.weekEnding && priorSet.has(row.weekEnding)) groups[g].prior += row.netCollected;
+  }
+
+  return Object.values(groups).map(g => {
+    const pctChange = g.prior !== 0 ? ((g.recent - g.prior) / Math.abs(g.prior)) * 100 : null;
+    return {
+      ...g,
+      pctChange,
+      total: g.recent + g.prior,
+      direction: pctChange === null ? 'flat' : pctChange > 1 ? 'up' : pctChange < -1 ? 'down' : 'flat',
+    };
+  }).sort((a, b) => b.total - a.total);
+}
+
+// KPI period-over-period: compare last 4 weeks vs the 4 before that
+export function computeKPITrends(rows) {
+  const allWeeks = [...new Set(rows.map(r => r.weekEnding).filter(Boolean))].sort();
+  if (allWeeks.length < 2) return null;
+
+  const count = Math.min(4, Math.max(1, Math.floor(allWeeks.length / 2)));
+  const recentSet = new Set(allWeeks.slice(-count));
+  const priorSet = new Set(allWeeks.slice(-count * 2, -count));
+  if (!priorSet.size) return null;
+
+  const recent = rows.filter(r => r.weekEnding && recentSet.has(r.weekEnding));
+  const prior  = rows.filter(r => r.weekEnding && priorSet.has(r.weekEnding));
+  const rk = computeKPIs(recent);
+  const pk = computeKPIs(prior);
+
+  const pct  = (r, p) => (p !== 0 ? ((r - p) / Math.abs(p)) * 100 : null);
+  const diff = (r, p) => r - p;
+
+  return {
+    totalCollected: pct(rk.totalCollected, pk.totalCollected),
+    insurancePct:   diff(rk.insurancePct,   pk.insurancePct),
+    patientPct:     diff(rk.patientPct,     pk.patientPct),
+    refundRate:     diff(rk.refundRate,     pk.refundRate),
+    avgDaysToPost:  pct(rk.avgDaysToPost,   pk.avgDaysToPost),
+  };
 }
 
 export function computeStateComparison(rows) {
